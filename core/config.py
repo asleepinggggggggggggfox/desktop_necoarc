@@ -14,6 +14,8 @@ class AppConfig:
     window_height: int = 520
     always_on_top: bool = True
     character_image: str = "assets/character.png"
+    api_mode: str = "direct"
+    proxy_base_url: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
     deepseek_api_key: str = ""
@@ -112,4 +114,3 @@ def _coerce(value: str, current):
         except ValueError:
             return current
     return value
-

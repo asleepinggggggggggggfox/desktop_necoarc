@@ -59,22 +59,192 @@ python -m pip install -r requirements.txt
 - `websocket-client`：讯飞 WebSocket 识别
 - `requests`：DeepSeek HTTP 请求
 
-## API 配置
+## API 配置推荐方式
 
-API 信息放在：
+推荐使用“本地前端 + 云端后端代理”模式：
+
+- 本地桌宠：只保存后端代理地址，不保存 API Key
+- 阿里云服务器：保存 DeepSeek 和讯飞 API Key
+- 本地录音后把 wav 文件发给服务器
+- 服务器完成讯飞识别和 DeepSeek 回复
+- 服务器只把识别文本和回复文本返回本地
+
+这样即使本地项目目录被分享出去，也不会泄露 API Key。
+
+当前本地 `config.yaml` 已默认使用代理模式：
+
+```yaml
+api_mode: proxy
+proxy_base_url: http://127.0.0.1:8000
+```
+
+部署到阿里云后，把 `proxy_base_url` 改成你的服务器地址，例如：
+
+```yaml
+proxy_base_url: http://你的服务器公网IP:8000
+```
+
+如果配置了域名和 HTTPS：
+
+```yaml
+proxy_base_url: https://api.your-domain.com
+```
+
+## 云端后端代理部署
+
+后端代码在：
+
+```text
+backend/proxy_server.py
+```
+
+在阿里云服务器上安装依赖：
+
+```bash
+python -m pip install -r backend/requirements.txt
+```
+
+在服务器上设置环境变量：
+
+```bash
+export DEEPSEEK_API_KEY="你的 DeepSeek API Key"
+export XUNFEI_APP_ID="你的讯飞 APPID"
+export XUNFEI_API_KEY="你的讯飞 APIKey"
+export XUNFEI_API_SECRET="你的讯飞 APISecret"
+```
+
+临时启动后端服务：
+
+```bash
+uvicorn backend.proxy_server:app --host 0.0.0.0 --port 8000
+```
+
+这个方式关闭终端后服务会停止。长期运行推荐使用下面的 `systemd` 服务方式。
+
+## 阿里云长期运行方式
+
+推荐把后端部署成 `systemd` 服务，终端关闭后不会停止，服务器重启后也能自动拉起。
+
+假设项目放在：
+
+```bash
+/opt/desktop_necoarc
+```
+
+创建服务用户：
+
+```bash
+sudo useradd --system --create-home --shell /usr/sbin/nologin necoarc
+```
+
+复制项目并设置权限：
+
+```bash
+sudo mkdir -p /opt/desktop_necoarc
+sudo cp -r /你的项目路径/* /opt/desktop_necoarc/
+sudo chown -R necoarc:necoarc /opt/desktop_necoarc
+```
+
+安装虚拟环境和依赖：
+
+```bash
+cd /opt/desktop_necoarc
+sudo python3 -m venv .venv
+sudo ./.venv/bin/python -m pip install -r backend/requirements.txt
+sudo chown -R necoarc:necoarc /opt/desktop_necoarc/.venv
+```
+
+创建服务器环境变量文件：
+
+```bash
+sudo cp deploy/necoarc-proxy.env.example /etc/necoarc-proxy.env
+sudo nano /etc/necoarc-proxy.env
+```
+
+把里面的占位值改成真实 API Key。
+
+保护环境变量文件：
+
+```bash
+sudo chown root:root /etc/necoarc-proxy.env
+sudo chmod 600 /etc/necoarc-proxy.env
+```
+
+安装 systemd 服务：
+
+```bash
+sudo cp deploy/necoarc-proxy.service /etc/systemd/system/necoarc-proxy.service
+sudo systemctl daemon-reload
+sudo systemctl enable necoarc-proxy
+sudo systemctl start necoarc-proxy
+```
+
+查看运行状态：
+
+```bash
+sudo systemctl status necoarc-proxy
+```
+
+查看日志：
+
+```bash
+sudo journalctl -u necoarc-proxy -f
+```
+
+重启服务：
+
+```bash
+sudo systemctl restart necoarc-proxy
+```
+
+检查服务状态：
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+返回中应看到：
+
+```json
+{
+  "ok": true,
+  "deepseek_configured": true,
+  "xunfei_configured": true
+}
+```
+
+阿里云安全组需要放行后端端口，例如 `8000`。正式使用建议通过 Nginx 反向代理到 HTTPS。
+
+## 本地直连模式
+
+如果你只是本地调试，也可以使用旧的直连模式：
+
+```yaml
+api_mode: direct
+```
+
+直连模式下，API 信息可以放在：
 
 ```text
 plan/api.md
 ```
 
-当前程序会从该文件读取：
+格式：
 
-- 讯飞开放平台 `APPID`
-- 讯飞开放平台 `APIKey`
-- 讯飞开放平台 `APISecret`
-- DeepSeek API Key
+```md
+#### 讯飞开放平台
+APPID
+你的讯飞APPID
+APISecret
+你的讯飞APISecret
+APIKey
+你的讯飞APIKey
 
-`plan/api.md` 已加入 `.gitignore`，不要提交到仓库。
+#### deepseek
+你的DeepSeek API Key
+```
+
+`plan/api.md` 已加入 `.gitignore`，不要提交到仓库。更推荐使用云端代理模式。
 
 也可以使用环境变量覆盖：
 
@@ -100,6 +270,8 @@ window_width: 500
 window_height: 260
 always_on_top: true
 character_image: plan/Neco-Arc_Remake.png
+api_mode: proxy
+proxy_base_url: http://127.0.0.1:8000
 deepseek_base_url: https://api.deepseek.com
 deepseek_model: deepseek-chat
 xunfei_iat_url: wss://iat-api.xfyun.cn/v2/iat

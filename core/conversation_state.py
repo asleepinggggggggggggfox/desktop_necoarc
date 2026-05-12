@@ -6,13 +6,13 @@ from dataclasses import dataclass
 @dataclass
 class ConversationState:
     user_previous: str = ""
-    user_current: str = "按住录音按钮开始说话"
+    user_current: str = "按左 Alt 开始录音"
     ai_previous: str = ""
     ai_current: str = "等待你的问题"
 
     def begin_turn(self) -> None:
         if self.user_current and self.user_current not in {
-            "按住录音按钮开始说话",
+            "按左 Alt 开始录音",
             "正在录音...",
             "正在识别...",
         }:

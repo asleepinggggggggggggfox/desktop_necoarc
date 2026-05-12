@@ -43,49 +43,77 @@ class BubbleWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        margin = 4
+        margin = 5
         scale = max(0.45, min(1.0, self.width() / 220))
-        tail_w = int(38 * scale)
-        tail_h = int(24 * scale)
+        tail_w = int(30 * scale)
+        tail_h = int(18 * scale)
         body = QRect(margin, margin, self.width() - margin * 2, self.height() - tail_h - margin)
-        radius = int(28 * scale)
+        radius = int(14 * scale)
 
         path = QPainterPath()
         path.addRoundedRect(body, radius, radius)
         if self.side == "left":
-            base_x = body.right() - int(70 * scale)
+            base_x = body.right() - int(44 * scale)
             path.moveTo(base_x, body.bottom() - 1)
-            path.lineTo(base_x + tail_w, body.bottom() + tail_h)
-            path.lineTo(base_x + tail_w + int(26 * scale), body.bottom() - 1)
+            path.cubicTo(
+                base_x + int(8 * scale),
+                body.bottom() + int(7 * scale),
+                base_x + tail_w,
+                body.bottom() + tail_h,
+                base_x + tail_w,
+                body.bottom() + tail_h,
+            )
+            path.cubicTo(
+                base_x + int(14 * scale),
+                body.bottom() + int(7 * scale),
+                base_x + int(4 * scale),
+                body.bottom(),
+                base_x + int(24 * scale),
+                body.bottom() - 1,
+            )
         else:
-            base_x = body.left() + int(96 * scale)
+            base_x = body.left() + int(52 * scale)
             path.moveTo(base_x, body.bottom() - 1)
-            path.lineTo(base_x - tail_w, body.bottom() + tail_h)
-            path.lineTo(base_x - tail_w - int(26 * scale), body.bottom() - 1)
+            path.cubicTo(
+                base_x - int(8 * scale),
+                body.bottom() + int(7 * scale),
+                base_x - tail_w,
+                body.bottom() + tail_h,
+                base_x - tail_w,
+                body.bottom() + tail_h,
+            )
+            path.cubicTo(
+                base_x - int(14 * scale),
+                body.bottom() + int(7 * scale),
+                base_x - int(4 * scale),
+                body.bottom(),
+                base_x - int(24 * scale),
+                body.bottom() - 1,
+            )
 
         shadow = QPainterPath(path)
-        painter.translate(0, int(2 * scale))
+        painter.translate(0, int(3 * scale))
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 35))
+        painter.setBrush(QColor(0, 0, 0, 20))
         painter.drawPath(shadow)
-        painter.translate(0, -int(2 * scale))
+        painter.translate(0, -int(3 * scale))
 
         if self.tone == "input":
-            border = QColor(196, 66, 70, 130)
-            fill = QColor(255, 247, 247, 238)
-            text_color = QColor(154, 35, 40)
+            border = QColor(210, 82, 90, 82)
+            fill = QColor(255, 247, 248, 218)
+            text_color = QColor(178, 44, 52)
         else:
-            border = QColor(56, 151, 96, 130)
-            fill = QColor(247, 255, 250, 238)
-            text_color = QColor(33, 118, 70)
+            border = QColor(66, 168, 110, 82)
+            fill = QColor(247, 255, 250, 218)
+            text_color = QColor(28, 132, 78)
 
-        painter.setPen(QPen(border, max(1, int(2.2 * scale))))
+        painter.setPen(QPen(border, max(1, int(1.35 * scale))))
         painter.setBrush(fill)
         painter.drawPath(path)
 
         pad_x = int(18 * scale)
         pad_y = int(14 * scale)
-        text_rect = body.adjusted(pad_x, pad_y, -pad_x, -int(16 * scale))
+        text_rect = body.adjusted(pad_x, pad_y, -pad_x, -int(14 * scale))
         font = self._font(scale)
         painter.setFont(font)
         painter.setPen(text_color)
@@ -96,10 +124,16 @@ class BubbleWidget(QWidget):
         )
 
     def _elide_lines(self, painter: QPainter, rect: QRect) -> str:
-        metrics = painter.fontMetrics()
         words = self._text.strip() or " "
-        if metrics.boundingRect(rect, Qt.TextWordWrap, words).height() <= rect.height():
-            return words
+        font = painter.font()
+        for point_size in range(font.pointSize(), 6, -1):
+            font.setPointSize(point_size)
+            painter.setFont(font)
+            metrics = painter.fontMetrics()
+            if metrics.boundingRect(rect, Qt.TextWordWrap, words).height() <= rect.height():
+                return words
+
+        metrics = painter.fontMetrics()
         compact = words
         while compact and metrics.boundingRect(rect, Qt.TextWordWrap, compact + "...").height() > rect.height():
             compact = compact[:-1]

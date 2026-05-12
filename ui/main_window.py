@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import ctypes
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QMainWindow, QMenu, QPushButton
+from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QMainWindow, QMenu
 
 from core.audio_recorder import AudioRecorder
 from core.config import AppConfig, ROOT
 from core.conversation_state import ConversationState
 from core.deepseek_client import DeepSeekClient
+from core.proxy_client import ProxyClient
 from core.xunfei_speech_to_text import XunfeiSpeechToText
 from ui.bubble_widget import BubbleWidget
 from ui.character_widget import CharacterWidget
+
+
+VK_LMENU = 0xA4
 
 
 class MainWindow(QMainWindow):
@@ -23,9 +28,12 @@ class MainWindow(QMainWindow):
         self.deepseek = DeepSeekClient(config)
         self.speech = XunfeiSpeechToText(config)
         self.recorder = AudioRecorder(config)
+        self.proxy = ProxyClient(config)
         self.executor = ThreadPoolExecutor(max_workers=2)
         self._drag_pos: QPoint | None = None
         self._recording = False
+        self._processing = False
+        self._left_alt_down = False
 
         flags = Qt.FramelessWindowHint | Qt.Tool
         if config.always_on_top:
@@ -46,16 +54,10 @@ class MainWindow(QMainWindow):
         self._ai_prev_effect.setOpacity(1.0)
         self._fade_anim: QPropertyAnimation | None = None
 
-        self.record_button = QPushButton("录音", self)
-        self.record_button.clicked.connect(self.toggle_recording)
-        self.record_button.setStyleSheet(
-            "QPushButton { background: rgba(255,255,252,210); color: #1f1f1f; "
-            "border: 1px solid rgba(20,20,20,210); border-radius: 10px; "
-            "padding: 3px 9px; font: 11px 'Microsoft YaHei UI'; }"
-            "QPushButton:hover { background: rgba(255,255,255,235); }"
-            "QPushButton:pressed { background: rgba(232,232,228,235); }"
-            "QPushButton:disabled { color: rgba(40,40,40,150); background: rgba(245,245,240,150); }"
-        )
+        self.hotkey_timer = QTimer(self)
+        self.hotkey_timer.setInterval(45)
+        self.hotkey_timer.timeout.connect(self._poll_left_alt)
+        self.hotkey_timer.start()
 
         self.refresh_state()
 
@@ -65,15 +67,20 @@ class MainWindow(QMainWindow):
     def layout_widgets(self) -> None:
         width = self.width()
         height = self.height()
-        margin_x = int(width * 0.055)
         top_y = 12
-        controls_y = height - 25
-        max_bubble_w = int(width * 0.35)
-        max_prev_h = int(height * 0.34)
-        max_current_h = controls_y - top_y - 8
+        character_safe_w = int(width * 0.30)
+        side_gap = int(width * 0.014)
+        outer_margin = 6
+        char_left = (width - character_safe_w) // 2
+        char_right = char_left + character_safe_w
+        max_bubble_w = min(190, char_left - side_gap - outer_margin)
+        max_bubble_w = max(145, max_bubble_w)
+        max_prev_h = int(height * 0.43)
 
         user_prev_w, user_prev_h = self.user_prev.preferred_size(max_bubble_w, max_prev_h)
         ai_prev_w, ai_prev_h = self.ai_prev.preferred_size(max_bubble_w, max_prev_h)
+        controls_y = height - 4
+        max_current_h = controls_y - top_y - 8
         user_current_w, user_current_h = self.user_current.preferred_size(max_bubble_w, max_current_h)
         ai_current_w, ai_current_h = self.ai_current.preferred_size(max_bubble_w, max_current_h)
 
@@ -81,17 +88,16 @@ class MainWindow(QMainWindow):
         default_bottom_y = int(height * 0.57)
         bottom_y = max(top_y, min(default_bottom_y, controls_y - bottom_h - 8))
 
-        self.user_prev.setGeometry(margin_x, top_y, user_prev_w, user_prev_h)
-        self.user_current.setGeometry(margin_x, bottom_y, user_current_w, user_current_h)
-        self.ai_prev.setGeometry(width - margin_x - ai_prev_w, top_y, ai_prev_w, ai_prev_h)
-        self.ai_current.setGeometry(width - margin_x - ai_current_w, bottom_y, ai_current_w, ai_current_h)
+        left_inner_edge = char_left - side_gap
+        right_inner_edge = char_right + side_gap
+        self.user_prev.setGeometry(left_inner_edge - user_prev_w, top_y, user_prev_w, user_prev_h)
+        self.user_current.setGeometry(left_inner_edge - user_current_w, bottom_y, user_current_w, user_current_h)
+        self.ai_prev.setGeometry(right_inner_edge, top_y, ai_prev_w, ai_prev_h)
+        self.ai_current.setGeometry(right_inner_edge, bottom_y, ai_current_w, ai_current_h)
 
-        char_w = int(width * 0.34)
-        char_h = int(height * 0.86)
-        self.character.setGeometry((width - char_w) // 2, height - char_h - 12, char_w, char_h)
-
-        self.record_button.adjustSize()
-        self.record_button.move((width - self.record_button.width()) // 2, controls_y)
+        char_w = int(width * 0.30)
+        char_h = int(height * 0.88)
+        self.character.setGeometry((width - char_w) // 2, height - char_h - 4, char_w, char_h)
 
     def refresh_state(self) -> None:
         self.user_prev.set_text(self.state.user_previous)
@@ -103,6 +109,8 @@ class MainWindow(QMainWindow):
         self.layout_widgets()
 
     def toggle_recording(self) -> None:
+        if self._processing:
+            return
         if self._recording or self.recorder.is_recording:
             self.stop_recording()
         else:
@@ -117,8 +125,6 @@ class MainWindow(QMainWindow):
             self.fade_previous_output()
             self.recorder.start()
             self._recording = True
-            self.record_button.setText("停止")
-            self.record_button.setEnabled(True)
             self.layout_widgets()
         except Exception as exc:
             self._reset_recording_ui()
@@ -132,8 +138,7 @@ class MainWindow(QMainWindow):
             return
 
         self._recording = False
-        self.record_button.setText("处理中")
-        self.record_button.setEnabled(False)
+        self._processing = True
         self.layout_widgets()
 
         try:
@@ -149,6 +154,8 @@ class MainWindow(QMainWindow):
             self.refresh_state()
 
     def _voice_pipeline(self, wav_path: Path) -> tuple[str, str]:
+        if self.config.api_mode.lower() == "proxy":
+            return self.proxy.voice_chat(wav_path)
         user_text = self.speech.transcribe(wav_path)
         reply = self.deepseek.chat(user_text)
         return user_text, reply
@@ -180,9 +187,14 @@ class MainWindow(QMainWindow):
     def _reset_recording_ui(self) -> None:
         self._recording = False
         self.recorder.reset()
-        self.record_button.setText("录音")
-        self.record_button.setEnabled(True)
+        self._processing = False
         self.layout_widgets()
+
+    def _poll_left_alt(self) -> None:
+        is_down = bool(ctypes.windll.user32.GetAsyncKeyState(VK_LMENU) & 0x8000)
+        if is_down and not self._left_alt_down:
+            self.toggle_recording()
+        self._left_alt_down = is_down
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)

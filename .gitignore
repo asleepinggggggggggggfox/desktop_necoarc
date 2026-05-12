@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+temp/*
+!temp/.gitkeep
+plan/api.md
+

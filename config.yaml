@@ -1,0 +1,11 @@
+window_width: 500
+window_height: 260
+always_on_top: true
+character_image: plan/Neco-Arc_Remake.png
+deepseek_base_url: https://api.deepseek.com
+deepseek_model: deepseek-chat
+xunfei_iat_url: wss://iat-api.xfyun.cn/v2/iat
+xunfei_language: zh_cn
+xunfei_accent: mandarin
+sample_rate: 16000
+temp_dir: temp

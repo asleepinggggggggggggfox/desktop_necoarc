@@ -1,0 +1,6 @@
+PySide6>=6.6
+requests>=2.31
+sounddevice>=0.4
+soundfile>=0.12
+websocket-client>=1.7
+

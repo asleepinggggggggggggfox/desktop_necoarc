@@ -119,16 +119,17 @@ class BubbleWidget(QWidget):
         painter.setPen(text_color)
         painter.drawText(
             text_rect,
-            Qt.AlignCenter | Qt.TextWordWrap,
-            self._elide_lines(painter, text_rect),
+            Qt.AlignHCenter | Qt.AlignVCenter | Qt.TextWordWrap,
+            self._fit_text(painter, text_rect),
         )
 
-    def _elide_lines(self, painter: QPainter, rect: QRect) -> str:
+    def _fit_text(self, painter: QPainter, rect: QRect) -> str:
         words = self._text.strip() or " "
-        font = painter.font()
-        for point_size in range(font.pointSize(), 6, -1):
-            font.setPointSize(point_size)
-            painter.setFont(font)
+        base_font = painter.font()
+        for point_size in range(base_font.pointSize(), 6, -1):
+            trial_font = QFont(base_font)
+            trial_font.setPointSize(point_size)
+            painter.setFont(trial_font)
             metrics = painter.fontMetrics()
             if metrics.boundingRect(rect, Qt.TextWordWrap, words).height() <= rect.height():
                 return words

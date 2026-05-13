@@ -3,7 +3,7 @@ window_height: 260
 always_on_top: true
 character_image: plan/Neco-Arc_Remake.png
 api_mode: proxy
-proxy_base_url: http://127.0.0.1:8000
+proxy_base_url: http://39.103.70.151:8000
 deepseek_base_url: https://api.deepseek.com
 deepseek_model: deepseek-chat
 xunfei_iat_url: wss://iat-api.xfyun.cn/v2/iat

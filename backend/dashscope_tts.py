@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import html
 import io
 import os
+import re
 import threading
 import wave
 from collections.abc import Mapping
@@ -10,9 +12,9 @@ from collections.abc import Mapping
 import requests
 
 
-DEFAULT_TTS_MODEL = "qwen3-tts-flash-realtime"
+DEFAULT_TTS_MODEL = "cosyvoice-v3.5-plus"
 DEFAULT_TTS_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
-DEFAULT_TTS_VOICE = "Cherry"
+DEFAULT_TTS_VOICE = "cosyvoice-v3.5-plus-bailian-7aa8479594894dfca48fb4a6d57cf6bc"
 
 
 class DashScopeTtsClient:
@@ -33,12 +35,18 @@ class DashScopeTtsClient:
         text = text.strip()
         if not text:
             raise RuntimeError("TTS 文本为空。")
+        text = _prepare_spoken_text(text)
         if len(text) > 220:
-            text = text[:220].rstrip() + "。"
+            text = text[:220].rstrip("，。！？~ ") + "。"
 
+        if self._should_use_cosyvoice_v2():
+            return self._synthesize_cosyvoice_v2(text)
         if self._should_use_non_realtime():
             return self._synthesize_non_realtime(text)
         return self._synthesize_realtime(text)
+
+    def _should_use_cosyvoice_v2(self) -> bool:
+        return self.model.lower().startswith("cosyvoice-")
 
     def _should_use_non_realtime(self) -> bool:
         model = self.model.lower()
@@ -71,6 +79,28 @@ class DashScopeTtsClient:
         audio_response = requests.get(audio_url, timeout=60)
         audio_response.raise_for_status()
         return audio_response.content
+
+    def _synthesize_cosyvoice_v2(self, text: str) -> bytes:
+        import dashscope
+        from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+        dashscope.api_key = self.api_key
+        dashscope.base_websocket_api_url = os.getenv(
+            "DASHSCOPE_TTS_V2_URL",
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+        )
+        synthesizer = SpeechSynthesizer(model=self.model, voice=self.voice)
+        ssml = _to_cat_arc_ssml(text)
+        try:
+            audio = synthesizer.call(ssml)
+        finally:
+            try:
+                synthesizer.get_duplex_api().close(1000, "bye")
+            except Exception:
+                pass
+        if not audio:
+            raise RuntimeError("CosyVoice TTS 未返回音频。")
+        return bytes(audio)
 
     def _synthesize_realtime(self, text: str) -> bytes:
         import dashscope
@@ -191,3 +221,39 @@ def _find_audio_url(value) -> str | None:
             if found:
                 return found
     return None
+
+
+def _prepare_spoken_text(text: str) -> str:
+    text = text.strip()
+    # Do not read stage directions or asides such as "（歪头）" or "(小声)".
+    text = re.sub(r"（[^（）]*）", "", text)
+    text = re.sub(r"\([^()]*\)", "", text)
+    text = re.sub(r"【[^【】]*】", "", text)
+    text = re.sub(r"\[[^\[\]]*\]", "", text)
+    text = text.replace("~", "～")
+    text = re.sub(r"\s+", "，", text)
+    text = re.sub(r"，{2,}", "，", text)
+    text = text.strip("，。！？、；： ")
+    if not text:
+        text = "本猫懂了喵。"
+    if not text.endswith(("。", "！", "？", "～")):
+        text += "喵。"
+    return text
+
+
+def _to_cat_arc_ssml(text: str) -> str:
+    text = _prepare_spoken_text(text)
+    text = html.escape(text, quote=True)
+    text = _add_ssml_breaks(text)
+    # A slightly faster and higher voice tends to feel closer to the tiny chaotic
+    # desktop-pet tone without relying on stage directions.
+    return f'<speak rate="1.18" pitch="1.18" volume="62">{text}</speak>'
+
+
+def _add_ssml_breaks(text: str) -> str:
+    text = re.sub(r"([。！？])", r"\1<break time=\"180ms\"/>", text)
+    text = re.sub(r"([，、；])", r"\1<break time=\"80ms\"/>", text)
+    text = text.replace("喵。", "喵！<break time=\"120ms\"/>")
+    text = text.replace("哼哼", "哼哼<break time=\"90ms\"/>")
+    text = text.replace("nya", "nya<break time=\"90ms\"/>")
+    return text

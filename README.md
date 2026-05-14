@@ -372,12 +372,14 @@ sudo nano /etc/necoarc-proxy.env
 
 ```bash
 DASHSCOPE_API_KEY=你的DashScope API Key
-DASHSCOPE_TTS_MODEL=qwen3-tts-flash-realtime
-DASHSCOPE_TTS_URL=wss://dashscope.aliyuncs.com/api-ws/v1/realtime
-DASHSCOPE_TTS_VOICE=qwen-tts-vc-bailian-voice-20260514120051964-f5eb
+DASHSCOPE_TTS_MODEL=cosyvoice-v3.5-plus
+DASHSCOPE_TTS_V2_URL=wss://dashscope.aliyuncs.com/api-ws/v1/inference
+DASHSCOPE_TTS_VOICE=cosyvoice-v3.5-plus-bailian-7aa8479594894dfca48fb4a6d57cf6bc
 ```
 
-如果要使用指令控制模型，把模型换成：
+CosyVoice v3.5 使用 SSML 控制语速、音高和停顿。当前后端会自动把朗读文本包装为 SSML，并移除括号里的舞台说明，避免读出“歪头”这类内容。
+
+如果要切回 qwen3 realtime 模型，把模型换成：
 
 ```bash
 DASHSCOPE_TTS_MODEL=qwen3-tts-instruct-flash-realtime

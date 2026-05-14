@@ -4,4 +4,4 @@ python-multipart>=0.0.9
 requests>=2.31
 soundfile>=0.12
 websocket-client>=1.7
-dashscope>=1.20
+dashscope>=1.23.4

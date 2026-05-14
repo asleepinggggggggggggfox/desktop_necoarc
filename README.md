@@ -350,3 +350,59 @@ python -m pip install --force-reinstall PySide6
 - 当前没有全局快捷键，录音通过窗口内按钮切换
 - 临时录音文件保存在 `temp/`
 - 如果角色图片缺失，会显示内置占位角色
+
+## 语音合成 TTS
+
+语音合成使用阿里云百炼 DashScope，API Key 只放在服务器环境变量里，本地不保存。
+
+服务器需要安装新增依赖：
+
+```bash
+cd /home/admin/desktop_necoarc
+sudo ./.venv/bin/python -m pip install -r backend/requirements.txt
+```
+
+编辑服务器环境变量：
+
+```bash
+sudo nano /etc/necoarc-proxy.env
+```
+
+添加：
+
+```bash
+DASHSCOPE_API_KEY=你的DashScope API Key
+DASHSCOPE_TTS_MODEL=qwen3-tts-flash-realtime
+DASHSCOPE_TTS_URL=wss://dashscope.aliyuncs.com/api-ws/v1/realtime
+DASHSCOPE_TTS_VOICE=qwen-tts-vc-bailian-voice-20260514120051964-f5eb
+```
+
+如果要使用指令控制模型，把模型换成：
+
+```bash
+DASHSCOPE_TTS_MODEL=qwen3-tts-instruct-flash-realtime
+DASHSCOPE_TTS_INSTRUCTIONS=语速稍快，语气像得意的小猫桌宠，但不要吵。
+```
+
+重启服务：
+
+```bash
+sudo systemctl restart necoarc-proxy
+```
+
+检查状态：
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+应看到：
+
+```json
+{
+  "ok": true,
+  "deepseek_configured": true,
+  "xunfei_configured": true,
+  "dashscope_tts_configured": true
+}
+```

@@ -8,6 +8,7 @@ from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QMainWindow, QMenu
 
 from core.audio_recorder import AudioRecorder
+from core.audio_player import AudioPlayer
 from core.config import AppConfig, ROOT
 from core.conversation_state import ConversationState
 from core.deepseek_client import DeepSeekClient
@@ -28,6 +29,7 @@ class MainWindow(QMainWindow):
         self.deepseek = DeepSeekClient(config)
         self.speech = XunfeiSpeechToText(config)
         self.recorder = AudioRecorder(config)
+        self.player = AudioPlayer()
         self.proxy = ProxyClient(config)
         self.executor = ThreadPoolExecutor(max_workers=2)
         self._drag_pos: QPoint | None = None
@@ -153,12 +155,12 @@ class MainWindow(QMainWindow):
             self.restore_previous_output()
             self.refresh_state()
 
-    def _voice_pipeline(self, wav_path: Path) -> tuple[str, str]:
+    def _voice_pipeline(self, wav_path: Path) -> tuple[str, str, bytes | None]:
         if self.config.api_mode.lower() == "proxy":
             return self.proxy.voice_chat(wav_path)
         user_text = self.speech.transcribe(wav_path)
         reply = self.deepseek.chat(user_text)
-        return user_text, reply
+        return user_text, reply, None
 
     def _watch_future(self, future: Future) -> None:
         timer = QTimer(self)
@@ -171,9 +173,11 @@ class MainWindow(QMainWindow):
             timer.stop()
             timer.deleteLater()
             try:
-                recognized, reply = future.result()
+                recognized, reply, audio = future.result()
                 self.state.set_thinking(recognized)
                 self.state.set_reply(reply)
+                if audio:
+                    self.executor.submit(self.player.play_wav_bytes, audio)
                 self.restore_previous_output()
             except Exception as exc:
                 self.state.set_error(str(exc))

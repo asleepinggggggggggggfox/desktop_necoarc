@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import requests
@@ -11,7 +12,7 @@ class ProxyClient:
     def __init__(self, config: AppConfig):
         self.config = config
 
-    def voice_chat(self, wav_path: Path) -> tuple[str, str]:
+    def voice_chat(self, wav_path: Path) -> tuple[str, str, bytes | None]:
         if not self.config.proxy_base_url:
             raise RuntimeError("缺少后端代理地址，请在 config.yaml 设置 proxy_base_url。")
 
@@ -24,4 +25,6 @@ class ProxyClient:
             )
         response.raise_for_status()
         data = response.json()
-        return data["text"].strip(), data["reply"].strip()
+        audio_base64 = data.get("audio_base64")
+        audio = base64.b64decode(audio_base64) if audio_base64 else None
+        return data["text"].strip(), data["reply"].strip(), audio

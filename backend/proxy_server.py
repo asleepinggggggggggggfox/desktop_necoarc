@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import base64
 import sys
 import tempfile
 from pathlib import Path
@@ -16,6 +17,7 @@ if str(ROOT) not in sys.path:
 from core.config import AppConfig
 from core.deepseek_client import DeepSeekClient
 from core.xunfei_speech_to_text import XunfeiSpeechToText
+from backend.dashscope_tts import DashScopeTtsClient
 
 
 class ChatRequest(BaseModel):
@@ -56,6 +58,7 @@ def health() -> dict[str, bool]:
         "xunfei_configured": bool(
             cfg.xunfei_app_id and cfg.xunfei_api_key and cfg.xunfei_api_secret
         ),
+        "dashscope_tts_configured": DashScopeTtsClient().configured,
     }
 
 
@@ -90,7 +93,13 @@ async def voice_chat(audio: UploadFile = File(...)) -> dict[str, str]:
         cfg = build_config()
         text = XunfeiSpeechToText(cfg).transcribe(wav_path)
         reply = DeepSeekClient(cfg).chat(text)
-        return {"text": text, "reply": reply}
+        response = {"text": text, "reply": reply}
+        tts = DashScopeTtsClient()
+        if tts.configured:
+            wav = tts.synthesize_wav(reply)
+            response["audio_base64"] = base64.b64encode(wav).decode("ascii")
+            response["audio_format"] = "wav"
+        return response
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
@@ -102,4 +111,3 @@ async def _save_upload(audio: UploadFile) -> Path:
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp:
         temp.write(await audio.read())
         return Path(temp.name)
-

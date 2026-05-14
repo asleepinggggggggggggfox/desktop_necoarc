@@ -5,6 +5,7 @@ import io
 import os
 import threading
 import wave
+from collections.abc import Mapping
 
 import requests
 
@@ -166,10 +167,11 @@ def _pcm_24k_mono_16bit_to_wav(pcm: bytes) -> bytes:
 
 
 def _dashscope_response_to_dict(response) -> dict:
-    if hasattr(response, "to_dict"):
-        return response.to_dict()
-    if isinstance(response, dict):
+    if isinstance(response, Mapping):
         return response
+    to_dict = getattr(type(response), "to_dict", None)
+    if callable(to_dict):
+        return to_dict(response)
     return dict(response)
 
 

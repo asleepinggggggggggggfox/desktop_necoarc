@@ -12,3 +12,4 @@ class AudioPlayer:
             return
         data, sample_rate = sf.read(io.BytesIO(audio), dtype="float32")
         sd.play(data, sample_rate)
+        sd.wait()

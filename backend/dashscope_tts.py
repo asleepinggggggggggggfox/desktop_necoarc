@@ -6,6 +6,8 @@ import os
 import threading
 import wave
 
+import requests
+
 
 DEFAULT_TTS_MODEL = "qwen3-tts-flash-realtime"
 DEFAULT_TTS_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
@@ -33,6 +35,43 @@ class DashScopeTtsClient:
         if len(text) > 220:
             text = text[:220].rstrip() + "。"
 
+        if self._should_use_non_realtime():
+            return self._synthesize_non_realtime(text)
+        return self._synthesize_realtime(text)
+
+    def _should_use_non_realtime(self) -> bool:
+        model = self.model.lower()
+        return "-vc-" in model or "-vd-" in model
+
+    def _synthesize_non_realtime(self, text: str) -> bytes:
+        import dashscope
+
+        dashscope.api_key = self.api_key
+        dashscope.base_http_api_url = os.getenv(
+            "DASHSCOPE_HTTP_BASE_URL",
+            "https://dashscope.aliyuncs.com/api/v1",
+        )
+        response = dashscope.MultiModalConversation.call(
+            model=self.model,
+            api_key=self.api_key,
+            text=text,
+            voice=self.voice,
+            language_type="Chinese",
+            stream=False,
+        )
+        data = _dashscope_response_to_dict(response)
+        if data.get("status_code") and data.get("status_code") != 200:
+            raise RuntimeError(f"DashScope 非实时 TTS 失败：{data}")
+
+        audio_url = _find_audio_url(data)
+        if not audio_url:
+            raise RuntimeError(f"DashScope 非实时 TTS 未返回音频地址：{data}")
+
+        audio_response = requests.get(audio_url, timeout=60)
+        audio_response.raise_for_status()
+        return audio_response.content
+
+    def _synthesize_realtime(self, text: str) -> bytes:
         import dashscope
         from dashscope.audio.qwen_tts_realtime import (
             AudioFormat,
@@ -48,10 +87,25 @@ class DashScopeTtsClient:
                 self.complete_event = threading.Event()
                 self.audio = bytearray()
                 self.error: Exception | None = None
+                self.events: list[str] = []
+
+            def on_close(self, close_status_code, close_msg) -> None:
+                self.events.append(f"closed:{close_status_code}:{close_msg}")
+                self.complete_event.set()
 
             def on_event(self, response) -> None:
                 try:
                     event_type = response.get("type")
+                    if event_type:
+                        self.events.append(event_type)
+                    if response.get("error"):
+                        self.error = RuntimeError(str(response["error"]))
+                        self.complete_event.set()
+                        return
+                    if event_type in {"error", "response.error"}:
+                        self.error = RuntimeError(str(response))
+                        self.complete_event.set()
+                        return
                     if event_type == "response.audio.delta":
                         self.audio.extend(base64.b64decode(response["delta"]))
                     elif event_type in {"response.done", "session.finished"}:
@@ -61,7 +115,11 @@ class DashScopeTtsClient:
                     self.complete_event.set()
 
             def wait_done(self) -> None:
-                self.complete_event.wait(timeout=60)
+                if not self.complete_event.wait(timeout=60):
+                    raise RuntimeError(
+                        "DashScope TTS 等待音频超时，已收到事件："
+                        + ", ".join(self.events[-8:])
+                    )
                 if self.error:
                     raise self.error
 
@@ -92,7 +150,8 @@ class DashScopeTtsClient:
                 pass
 
         if not callback.audio:
-            raise RuntimeError("DashScope TTS 未返回音频。")
+            events = ", ".join(callback.events[-8:]) or "无事件"
+            raise RuntimeError(f"DashScope TTS 未返回音频，已收到事件：{events}")
         return _pcm_24k_mono_16bit_to_wav(bytes(callback.audio))
 
 
@@ -104,3 +163,29 @@ def _pcm_24k_mono_16bit_to_wav(pcm: bytes) -> bytes:
         wav.setframerate(24000)
         wav.writeframes(pcm)
     return output.getvalue()
+
+
+def _dashscope_response_to_dict(response) -> dict:
+    if hasattr(response, "to_dict"):
+        return response.to_dict()
+    if isinstance(response, dict):
+        return response
+    return dict(response)
+
+
+def _find_audio_url(value) -> str | None:
+    if isinstance(value, dict):
+        for key in ("audio_url", "url", "audio"):
+            item = value.get(key)
+            if isinstance(item, str) and item.startswith(("http://", "https://")):
+                return item
+        for item in value.values():
+            found = _find_audio_url(item)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _find_audio_url(item)
+            if found:
+                return found
+    return None

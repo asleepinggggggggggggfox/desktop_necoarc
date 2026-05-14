@@ -155,12 +155,12 @@ class MainWindow(QMainWindow):
             self.restore_previous_output()
             self.refresh_state()
 
-    def _voice_pipeline(self, wav_path: Path) -> tuple[str, str, bytes | None]:
+    def _voice_pipeline(self, wav_path: Path) -> tuple[str, str, bytes | None, str | None]:
         if self.config.api_mode.lower() == "proxy":
             return self.proxy.voice_chat(wav_path)
         user_text = self.speech.transcribe(wav_path)
         reply = self.deepseek.chat(user_text)
-        return user_text, reply, None
+        return user_text, reply, None, None
 
     def _watch_future(self, future: Future) -> None:
         timer = QTimer(self)
@@ -173,9 +173,12 @@ class MainWindow(QMainWindow):
             timer.stop()
             timer.deleteLater()
             try:
-                recognized, reply, audio = future.result()
+                recognized, reply, audio, tts_error = future.result()
                 self.state.set_thinking(recognized)
-                self.state.set_reply(reply)
+                if tts_error and not audio:
+                    self.state.set_reply(f"{reply}\n\n语音合成失败：{tts_error}")
+                else:
+                    self.state.set_reply(reply)
                 if audio:
                     self.executor.submit(self.player.play_wav_bytes, audio)
                 self.restore_previous_output()

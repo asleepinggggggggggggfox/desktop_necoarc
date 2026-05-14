@@ -251,9 +251,9 @@ def _to_cat_arc_ssml(text: str) -> str:
 
 
 def _add_ssml_breaks(text: str) -> str:
-    text = re.sub(r"([。！？])", r"\1<break time=\"180ms\"/>", text)
-    text = re.sub(r"([，、；])", r"\1<break time=\"80ms\"/>", text)
-    text = text.replace("喵。", "喵！<break time=\"120ms\"/>")
-    text = text.replace("哼哼", "哼哼<break time=\"90ms\"/>")
-    text = text.replace("nya", "nya<break time=\"90ms\"/>")
+    text = re.sub(r"([。！？])", r'\1<break time="180ms"/>', text)
+    text = re.sub(r"([，、；])", r'\1<break time="80ms"/>', text)
+    text = text.replace("喵。", '喵！<break time="120ms"/>')
+    text = text.replace("哼哼", '哼哼<break time="90ms"/>')
+    text = text.replace("nya", 'nya<break time="90ms"/>')
     return text

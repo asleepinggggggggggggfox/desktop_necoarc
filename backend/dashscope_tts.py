@@ -27,8 +27,11 @@ class DashScopeTtsClient:
     def synthesize_wav(self, text: str) -> bytes:
         if not self.api_key:
             raise RuntimeError("缺少 DASHSCOPE_API_KEY。")
-        if not text.strip():
+        text = text.strip()
+        if not text:
             raise RuntimeError("TTS 文本为空。")
+        if len(text) > 220:
+            text = text[:220].rstrip() + "。"
 
         import dashscope
         from dashscope.audio.qwen_tts_realtime import (
@@ -83,7 +86,10 @@ class DashScopeTtsClient:
             qwen_tts.commit()
             callback.wait_done()
         finally:
-            qwen_tts.finish()
+            try:
+                qwen_tts.finish()
+            except Exception:
+                pass
 
         if not callback.audio:
             raise RuntimeError("DashScope TTS 未返回音频。")

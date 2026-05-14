@@ -96,9 +96,12 @@ async def voice_chat(audio: UploadFile = File(...)) -> dict[str, str]:
         response = {"text": text, "reply": reply}
         tts = DashScopeTtsClient()
         if tts.configured:
-            wav = tts.synthesize_wav(reply)
-            response["audio_base64"] = base64.b64encode(wav).decode("ascii")
-            response["audio_format"] = "wav"
+            try:
+                wav = tts.synthesize_wav(reply)
+                response["audio_base64"] = base64.b64encode(wav).decode("ascii")
+                response["audio_format"] = "wav"
+            except Exception as exc:
+                response["tts_error"] = str(exc)
         return response
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

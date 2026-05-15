@@ -1,7 +1,10 @@
 window_width: 500
 window_height: 260
 always_on_top: true
-character_image: plan/Neco-Arc_Remake.png
+character_image: plan/display/neco_normal_display.png
+character_happy_image: plan/display/neco_happy_display.png
+character_angry_image: plan/display/neco_angry_display.png
+character_sad_image: plan/display/neco_sad_display.png
 api_mode: proxy
 proxy_base_url: http://39.103.70.151:8000
 deepseek_base_url: https://api.deepseek.com

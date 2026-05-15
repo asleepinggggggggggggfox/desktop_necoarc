@@ -14,6 +14,9 @@ class AppConfig:
     window_height: int = 520
     always_on_top: bool = True
     character_image: str = "assets/character.png"
+    character_happy_image: str = ""
+    character_angry_image: str = ""
+    character_sad_image: str = ""
     api_mode: str = "direct"
     proxy_base_url: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"

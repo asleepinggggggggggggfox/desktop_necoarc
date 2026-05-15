@@ -20,6 +20,71 @@ from ui.character_widget import CharacterWidget
 
 VK_LMENU = 0xA4
 
+ERROR_MARKERS = (
+    "失败",
+    "错误",
+    "报错",
+    "异常",
+    "超时",
+    "连接",
+    "不可用",
+    "未返回",
+    "HTTP",
+    "Bad Gateway",
+    "Service Unavailable",
+)
+SAD_MARKERS = (
+    "抱歉",
+    "对不起",
+    "难过",
+    "不舒服",
+    "没办法",
+    "不能",
+    "不行",
+    "遗憾",
+    "可惜",
+    "失败",
+    "糟糕",
+    "等一下",
+    "稍等",
+)
+ANGRY_MARKERS = (
+    "生气",
+    "讨厌",
+    "不许",
+    "笨",
+    "可恶",
+    "烦",
+    "骂",
+    "错了",
+    "不对",
+    "别",
+    "别急",
+    "哼",
+    "喂",
+)
+HAPPY_MARKERS = (
+    "喜欢",
+    "谢谢",
+    "好了",
+    "可以",
+    "成功",
+    "懂了",
+    "收到",
+    "没问题",
+    "开心",
+    "当然",
+    "本猫懂了",
+    "喵",
+    "nya",
+    "猫猫大人",
+    "咕嘿嘿",
+    "哼哼",
+    "!",
+    "！",
+    "~",
+)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, config: AppConfig):
@@ -46,6 +111,7 @@ class MainWindow(QMainWindow):
         self.setFixedSize(config.window_width, config.window_height)
 
         self.character = CharacterWidget(ROOT / config.character_image, self)
+        self.character.set_expression_images(self._character_images())
         self.user_prev = BubbleWidget("left", "input", self.state.user_previous, self)
         self.user_current = BubbleWidget("left", "input", self.state.user_current, self)
         self.ai_prev = BubbleWidget("right", "output", self.state.ai_previous, self)
@@ -110,6 +176,41 @@ class MainWindow(QMainWindow):
         self.ai_prev.setVisible(bool(self.state.ai_previous.strip()))
         self.layout_widgets()
 
+    def _character_images(self) -> dict[str, Path]:
+        image_paths = {"normal": ROOT / self.config.character_image}
+        optional_images = {
+            "happy": self.config.character_happy_image,
+            "angry": self.config.character_angry_image,
+            "sad": self.config.character_sad_image,
+        }
+        for expression, path_text in optional_images.items():
+            if path_text:
+                image_paths[expression] = ROOT / path_text
+        return image_paths
+
+    def set_character_expression(self, expression: str) -> None:
+        self.character.set_expression(expression)
+
+    def set_reply_expression(self, reply: str, has_tts_error: bool = False) -> None:
+        if has_tts_error or self._contains_any(reply, ERROR_MARKERS):
+            self.set_character_expression("sad")
+        else:
+            scores = {
+                "sad": self._marker_score(reply, SAD_MARKERS),
+                "angry": self._marker_score(reply, ANGRY_MARKERS),
+                "happy": self._marker_score(reply, HAPPY_MARKERS),
+            }
+            expression, score = max(scores.items(), key=lambda item: item[1])
+            self.set_character_expression(expression if score > 0 else "normal")
+
+    @staticmethod
+    def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
+        return any(marker in text for marker in markers)
+
+    @staticmethod
+    def _marker_score(text: str, markers: tuple[str, ...]) -> int:
+        return sum(text.count(marker) for marker in markers)
+
     def toggle_recording(self) -> None:
         if self._processing:
             return
@@ -123,6 +224,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.state.begin_turn()
+            self.set_character_expression("happy")
             self.refresh_state()
             self.fade_previous_output()
             self.recorder.start()
@@ -131,6 +233,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self._reset_recording_ui()
             self.state.set_error(str(exc))
+            self.set_character_expression("sad")
             self.restore_previous_output()
             self.refresh_state()
 
@@ -146,12 +249,14 @@ class MainWindow(QMainWindow):
         try:
             wav_path = self.recorder.stop()
             self.state.set_recognizing()
+            self.set_character_expression("normal")
             self.refresh_state()
             future = self.executor.submit(self._voice_pipeline, wav_path)
             self._watch_future(future)
         except Exception as exc:
             self._reset_recording_ui()
             self.state.set_error(str(exc))
+            self.set_character_expression("sad")
             self.restore_previous_output()
             self.refresh_state()
 
@@ -179,11 +284,13 @@ class MainWindow(QMainWindow):
                     self.state.set_reply(f"{reply}\n\n语音合成失败：{tts_error}")
                 else:
                     self.state.set_reply(reply)
+                self.set_reply_expression(reply, bool(tts_error and not audio))
                 if audio:
                     self.executor.submit(self.player.play_wav_bytes, audio)
                 self.restore_previous_output()
             except Exception as exc:
                 self.state.set_error(str(exc))
+                self.set_character_expression("sad")
                 self.restore_previous_output()
             self._reset_recording_ui()
             self.refresh_state()

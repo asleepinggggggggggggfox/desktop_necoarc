@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
 
@@ -10,14 +10,34 @@ from PySide6.QtWidgets import QWidget
 class CharacterWidget(QWidget):
     def __init__(self, image_path: Path, parent=None):
         super().__init__(parent)
-        self.pixmap = QPixmap(str(image_path)) if image_path.exists() else QPixmap()
+        self.pixmaps: dict[str, QPixmap] = {}
+        self.expression = "normal"
+        self.set_expression_images({"normal": image_path})
         self.setAttribute(Qt.WA_TranslucentBackground)
+
+    def set_expression_images(self, image_paths: dict[str, Path]) -> None:
+        self.pixmaps = {
+            name: self._load_pixmap(path)
+            for name, path in image_paths.items()
+            if path.exists()
+        }
+        if self.expression not in self.pixmaps:
+            self.expression = "normal"
+        self.update()
+
+    def set_expression(self, expression: str) -> None:
+        next_expression = expression if expression in self.pixmaps else "normal"
+        if next_expression == self.expression:
+            return
+        self.expression = next_expression
+        self.update()
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        if not self.pixmap.isNull():
-            scaled = self.pixmap.scaled(
+        pixmap = self.pixmaps.get(self.expression) or self.pixmaps.get("normal") or QPixmap()
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(
                 self.size(),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
@@ -64,3 +84,6 @@ class CharacterWidget(QWidget):
         painter.drawPoint(cx + int(18 * scale), int(60 * scale))
         painter.setPen(QPen(QColor(44, 44, 44), max(2, int(2 * scale))))
         painter.drawArc(cx - int(17 * scale), int(72 * scale), int(34 * scale), int(16 * scale), 0, -180 * 16)
+
+    def _load_pixmap(self, image_path: Path) -> QPixmap:
+        return QPixmap(str(image_path))

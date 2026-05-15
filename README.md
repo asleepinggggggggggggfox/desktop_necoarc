@@ -7,7 +7,7 @@
 - 透明、无边框、置顶桌面窗口
 - 可拖动窗口位置
 - 右键菜单退出程序
-- 使用 `plan/Neco-Arc_Remake.png` 作为角色图片
+- 使用 `plan/Neco-Arc_Remake.png` 作为默认角色图片，并按录音、回复和报错状态切换表情图
 - 用户输入气泡为红色系
 - AI 输出气泡为绿色系
 - 对话气泡根据文本内容自动扩展
@@ -269,7 +269,10 @@ config.yaml
 window_width: 500
 window_height: 260
 always_on_top: true
-character_image: plan/Neco-Arc_Remake.png
+character_image: plan/display/neco_normal_display.png
+character_happy_image: plan/display/neco_happy_display.png
+character_angry_image: plan/display/neco_angry_display.png
+character_sad_image: plan/display/neco_sad_display.png
 api_mode: proxy
 proxy_base_url: http://127.0.0.1:8000
 deepseek_base_url: https://api.deepseek.com
@@ -280,6 +283,8 @@ xunfei_accent: mandarin
 sample_rate: 16000
 temp_dir: temp
 ```
+
+表情图片会按场合自动切换：录音时偏开心，普通回复按关键词判断开心、生气或难过，后端/API/TTS 报错时使用难过表情。`plan/display/` 中的是桌宠显示专用图片，已经预先裁切和处理透明背景，启动时不会再做抠图处理。
 
 ## 运行
 
